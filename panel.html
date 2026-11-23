@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Night Camp Telemetry</title>
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <div id="app" class="app">
+    <header class="topbar">
+      <div class="topbar-row1">
+        <div class="tab-picker-wrap">
+          <span id="liveDot" class="dot offline" title="สถานะการเชื่อมต่อ"></span>
+          <select id="tabSelect" class="select tab-select" title="เลือกแท็บเกม"></select>
+        </div>
+        <div class="top-actions">
+          <button id="btnToggleCapture" class="btn start-btn" title="เปิด/ปิดการเก็บข้อมูลแท็บนี้">▶ เปิด</button>
+          <button id="btnReset" class="btn icon-btn" title="รีเซ็ตสถิติรอบนี้">↺</button>
+          <button id="btnSaveRun" class="btn accent-btn" title="บันทึก Snapshot ไว้เทียบ A/B">💾 Save</button>
+          <div class="dropdown">
+            <button id="btnExport" class="btn" title="ส่งออกไฟล์ข้อมูล">Export ▾</button>
+            <div id="exportMenu" class="menu hidden">
+              <button data-export="csv">📄 CSV (Skills &amp; Runes)</button>
+              <button data-export="json">🧾 JSON (Full Summary)</button>
+            </div>
+          </div>
+          <button id="btnPopout" class="btn icon-btn" title="แยกเป็นหน้าต่างอิสระ (Popout)">↗</button>
+        </div>
+      </div>
+
+      <div id="heroMetaBar" class="hero-meta-bar">
+        <span id="heroTitle" class="hero-title">รอเชื่อมต่อแท็บ https://play.nightcamp.app/?online ...</span>
+        <span id="rttBadge" class="badge muted">RTT —</span>
+      </div>
+
+      <div class="kpi-strip">
+        <div class="strip-cell">
+          <span class="strip-lbl">DPS <small id="dpsModeBadge">(Elapsed)</small></span>
+          <span id="stripDps" class="strip-val cyan">0</span>
+        </div>
+        <div class="strip-cell">
+          <span class="strip-lbl">Crit%</span>
+          <span id="stripCrit" class="strip-val gold">0.0%</span>
+        </div>
+        <div class="strip-cell">
+          <span class="strip-lbl">EXP/m <small>(B/J)</small></span>
+          <span id="stripXp" class="strip-val"><span id="stripBaseXp" class="gold">0</span><span class="muted">/</span><span id="stripJobXp" class="green">0</span></span>
+        </div>
+        <div class="strip-cell">
+          <span class="strip-lbl">Taken/s</span>
+          <span id="stripDtps" class="strip-val red">0</span>
+        </div>
+        <div class="strip-cell">
+          <span class="strip-lbl">Net c/h</span>
+          <span id="stripNet" class="strip-val amber">0</span>
+        </div>
+      </div>
+
+      <nav class="nav-tabs" id="navTabs">
+        <button class="nav-tab active" data-tab="overview">Overview</button>
+        <button class="nav-tab" data-tab="skills">Skills &amp; Runes</button>
+        <button class="nav-tab" data-tab="elements">Elements &amp; Mobs</button>
+        <button class="nav-tab" data-tab="econ">Survival &amp; Econ</button>
+        <button class="nav-tab" data-tab="compare">Party &amp; A/B</button>
+      </nav>
+    </header>
+
+    <main class="content">
+      <div id="captureNotice" class="notice-bar hidden"></div>
+
+      <div id="emptyState" class="empty-card">
+        <div class="empty-icon">📡</div>
+        <div class="empty-title">Night Camp Telemetry (โหมดสแตนด์บาย)</div>
+        <div class="empty-sub">ปิดการเก็บข้อมูลไว้เพื่อไม่ให้กิน Resource (และจะหยุดเก็บอัตโนมัติหากปิดหน้าต่างครบ 5 นาที โดยไม่กระทบ Socket ของเกม)</div>
+        <div class="empty-actions">
+          <button id="btnEmptyStart" class="btn start-btn">▶ เปิดเก็บข้อมูลแท็บนี้</button>
+          <button id="btnRefreshTabs" class="btn">🔄 เช็กแท็บเกม</button>
+        </div>
+      </div>
+
+      <!-- TAB 1: OVERVIEW -->
+      <section id="tab-overview" class="tab-pane active">
+        <div class="toolbar-inline">
+          <span id="sessionTimer" class="muted">Elapsed 00:00 · Active 00:00</span>
+          <div class="seg-group" id="dpsModeSeg">
+            <button class="seg active" data-mode="elapsed">Elapsed DPS</button>
+            <button class="seg" data-mode="active">Active DPS</button>
+          </div>
+        </div>
+
+        <div id="alertsBar" class="alerts-bar hidden"></div>
+
+        <div id="overviewKpis" class="kpi-grid"></div>
+
+        <div class="card">
+          <div class="card-hd">
+            <span>Base &amp; Job EXP Progress</span>
+            <span id="expSessionBadge" class="muted">รอบนี้ +0 / +0</span>
+          </div>
+          <div id="expProgressBox" class="exp-box"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd">
+            <span>Live DPS / Damage Taken (120s)</span>
+            <span id="sparkLegend" class="legend">
+              <i class="leg-cyan">●</i> DPS &nbsp; <i class="leg-red">●</i> Taken
+            </span>
+          </div>
+          <canvas id="sparkCanvas" class="spark-canvas"></canvas>
+        </div>
+
+        <div class="card">
+          <div class="card-hd">
+            <span>Damage Source Composition</span>
+            <span id="compTotal" class="muted">0 DMG</span>
+          </div>
+          <div id="compBar" class="stacked-bar"></div>
+          <div id="compLegend" class="comp-legend"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd">
+            <span>Top Skills &amp; Proc Runes</span>
+            <span class="muted">กดดูละเอียดที่แท็บ Skills</span>
+          </div>
+          <div id="overviewTopSkills" class="mini-bars"></div>
+        </div>
+      </section>
+
+      <!-- TAB 2: SKILLS & RUNES -->
+      <section id="tab-skills" class="tab-pane">
+        <div class="skills-toolbar">
+          <input id="skillSearch" type="search" class="input" placeholder="ค้นหาสกิล หรือ รูน...">
+          <div class="sort-row">
+            <div class="seg-group" id="skillSortSeg">
+              <button class="seg active" data-sort="dmg">DMG</button>
+              <button class="seg" data-sort="dps">DPS</button>
+              <button class="seg" data-sort="hits">Hits</button>
+              <button class="seg" data-sort="crit">Crit%</button>
+              <button class="seg" data-sort="avg">Avg</button>
+            </div>
+            <button id="btnExpandAll" class="btn small">Expand All</button>
+          </div>
+        </div>
+
+        <div id="skillsSourceLegend" class="src-legend"></div>
+
+        <div id="skillsContainer" class="skills-list"></div>
+
+        <div class="card">
+          <div class="card-hd">
+            <span>All Runes Impact Summary</span>
+            <span class="muted">Exact = ดาเมจจริง · ~Est = ประมาณจากตัวคูณ</span>
+          </div>
+          <div id="runesSummaryContainer"></div>
+        </div>
+      </section>
+
+      <!-- TAB 3: ELEMENTS & MOBS -->
+      <section id="tab-elements" class="tab-pane">
+        <div class="card">
+          <div class="card-hd">
+            <span>9 Elements Breakdown</span>
+            <span id="activeElPill" class="badge">Active: —</span>
+          </div>
+          <div id="elementsContainer" class="mini-bars"></div>
+          <div id="reactionsRow" class="reactions-row"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd">
+            <span>Season 2 Armour Type Damage</span>
+            <span class="muted">Heavy / Hide / Flesh / Spirit</span>
+          </div>
+          <div id="armoursContainer"></div>
+        </div>
+
+        <div id="bossSection" class="card hidden">
+          <div class="card-hd">
+            <span>Boss Encounters</span>
+            <span class="muted">Auto-Split</span>
+          </div>
+          <div id="bossContainer"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd">
+            <span>Per-Monster Breakdown (TTK &amp; Danger Mobs)</span>
+            <span class="muted">เรียงตามดาเมจที่มอนตีเรา</span>
+          </div>
+          <div id="monstersContainer"></div>
+        </div>
+      </section>
+
+      <!-- TAB 4: SURVIVAL & ECON -->
+      <section id="tab-econ" class="tab-pane">
+        <div class="card">
+          <div class="card-hd">
+            <span>Survival &amp; Healing</span>
+            <span id="survivalBadge" class="muted">Deaths: 0</span>
+          </div>
+          <div id="survivalGrid" class="mini-grid"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd">
+            <span>Season 2 Economy &amp; Potions</span>
+            <span id="crowdBadge" class="muted">Map: —</span>
+          </div>
+          <div id="econGrid" class="mini-grid"></div>
+          <div id="potsBreakdown" class="pots-breakdown"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd">
+            <span>Rare Drops &amp; Dry Streaks</span>
+            <span id="dryStreakBadge" class="muted">—</span>
+          </div>
+          <div id="dropsContainer"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd">
+            <span>Buff Uptime % (In-Combat)</span>
+            <span class="muted">Execution &amp; Network</span>
+          </div>
+          <div id="buffsContainer" class="mini-bars"></div>
+          <div id="execContainer" class="exec-row"></div>
+        </div>
+      </section>
+
+      <!-- TAB 5: PARTY & COMPARE -->
+      <section id="tab-compare" class="tab-pane">
+        <div class="card">
+          <div class="card-hd">
+            <span>Party &amp; Nearby DPS Meter</span>
+            <span id="partyBadge" class="muted">—</span>
+          </div>
+          <div id="partyContainer"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd">
+            <span>Build A/B Compare</span>
+            <button id="btnDeleteRunA" class="btn small danger hidden" title="ลบ Run A ที่เลือก">ลบ Run A</button>
+          </div>
+          <div class="compare-pickers">
+            <label>Run A:
+              <select id="selectRunA" class="select"></select>
+            </label>
+            <label>Run B:
+              <select id="selectRunB" class="select"></select>
+            </label>
+          </div>
+          <div id="compareContainer"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd">
+            <span>Live Combat Log</span>
+            <div class="seg-group" id="logFilterSeg">
+              <button class="seg active" data-log="all">All</button>
+              <button class="seg" data-log="rune">Runes</button>
+              <button class="seg" data-log="taken">Taken</button>
+              <button class="seg" data-log="drop">Drops</button>
+              <button class="seg" data-log="error">Err</button>
+            </div>
+          </div>
+          <div id="logContainer" class="log-list"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script type="module" src="panel.js"></script>
+</body>
+</html>
