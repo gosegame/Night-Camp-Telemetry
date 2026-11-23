@@ -4,6 +4,9 @@
 
 ---
 
+<img width="1628" height="1187" alt="1" src="https://github.com/user-attachments/assets/adc5a4f9-55f7-479f-bba1-a32e80abc66e" />
+
+
 ## ความสามารถหลัก (แบ่งตาม 5 แท็บ)
 
 ### 1. Overview (ภาพรวม & EXP)
