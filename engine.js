@@ -30,15 +30,105 @@ export const ARMOUR_META = {
   unknown: { name: 'ไม่ระบุ', weak: '-' },
 };
 
-export const REACTION_NAMES = {
-  steam: 'ไอน้ำระเบิด',
-  superconduct: 'ไฟฟ้าช็อตน้ำแข็ง',
-  overload: 'โอเวอร์โหลด',
-  poisonfire: 'พิษลุกไหม้',
-  wildfire: 'ไฟลามทุ่ง',
-  cleanse: 'ชำระล้าง',
-  mist: 'หมอกเดือด',
-  conduct: 'กระแสนำไฟ',
+export const REACTION_META = {
+  overload: {
+    name: 'โอเวอร์โหลด',
+    combo: 'ไฟ + ช็อต',
+    element: 'fire',
+    color: '#ff6b4a',
+    mode: 'blast',
+    hasBlast: true,
+    hasMult: false,
+    blastHitsSelf: true,
+  },
+  steam: {
+    name: 'ไอน้ำระเบิด',
+    combo: 'ไฟ + แช่แข็ง',
+    element: 'fire',
+    color: '#7dd3fc',
+    mode: 'mult+blast',
+    hasBlast: true,
+    hasMult: true,
+    blastHitsSelf: false,
+  },
+  superconduct: {
+    name: 'ไฟฟ้าช็อตน้ำแข็ง',
+    combo: 'ลม + เย็น/แข็ง',
+    element: 'wind',
+    color: '#67e8f9',
+    mode: 'blast',
+    hasBlast: true,
+    hasMult: false,
+    blastHitsSelf: false,
+    maxBlastHits: 3,
+  },
+  poisonfire: {
+    name: 'พิษลุกไหม้',
+    combo: 'ไฟ + พิษ',
+    element: 'poison',
+    color: '#a3e635',
+    mode: 'blast',
+    hasBlast: true,
+    hasMult: false,
+    blastHitsSelf: true,
+  },
+  mist: {
+    name: 'หมอกเดือด',
+    combo: 'น้ำ + เผา',
+    element: 'water',
+    color: '#bae6fd',
+    mode: 'blast',
+    hasBlast: true,
+    hasMult: false,
+    blastHitsSelf: true,
+    blastOnlySelf: true,
+    maxBlastHits: 1,
+  },
+  cleanse: {
+    name: 'ชำระล้าง',
+    combo: 'แสง + คำสาป',
+    element: 'holy',
+    color: '#fde047',
+    mode: 'mult',
+    hasBlast: false,
+    hasMult: true,
+    blastHitsSelf: false,
+  },
+  wildfire: {
+    name: 'ไฟลามทุ่ง',
+    combo: 'ลม + เผา',
+    element: 'fire',
+    color: '#f97316',
+    mode: 'spread',
+    hasBlast: false,
+    hasMult: false,
+    blastHitsSelf: false,
+  },
+  conduct: {
+    name: 'กระแสนำไฟ',
+    combo: 'น้ำ + ช็อต',
+    element: 'wind',
+    color: '#93c5fd',
+    mode: 'cc',
+    hasBlast: false,
+    hasMult: false,
+    blastHitsSelf: false,
+  },
+};
+
+export const REACTION_NAMES = Object.fromEntries(
+  Object.entries(REACTION_META).map(([k, v]) => [k, v.name])
+);
+
+export const DOT_META = {
+  burn: { name: 'เผา (Burn)', element: 'fire', color: '#f97316' },
+  poison: { name: 'พิษ (Poison)', element: 'poison', color: '#84cc16' },
+  bl_venom: { name: 'รูนพิษสะสม (Venom)', element: 'poison', color: '#a3e635' },
+  bleed: { name: 'เลือดไหล (Bleed)', element: 'neutral', color: '#fb7185' },
+  rp_bleed: { name: 'เลือดไหล (Reaper)', element: 'neutral', color: '#ff6a7a' },
+  as_bleed: { name: 'เลือดไหล (Assassin)', element: 'neutral', color: '#ff6b6b' },
+  __dot_burn_poison__: { name: 'เผา / พิษ (Burn/Poison)', element: 'poison', color: '#84cc16' },
+  __dot_unknown__: { name: 'DoT อื่นๆ', element: 'neutral', color: '#4ade80' },
 };
 
 export const RUNE_META = {
@@ -111,7 +201,13 @@ const KNOWN_SKILL_ELEMENTS = {
   bleed: 'neutral',
   rp_bleed: 'neutral',
   as_bleed: 'neutral',
+  __dot_burn_poison__: 'poison',
+  __dot_unknown__: 'neutral',
 };
+for (const [rxK, rxDef] of Object.entries(REACTION_META)) {
+  KNOWN_SKILL_ELEMENTS[rxK] = rxDef.element;
+  KNOWN_SKILL_ELEMENTS['reaction_' + rxK] = rxDef.element;
+}
 
 const EST_MULTIPLIER_RUNES = new Set(['heavy', 'execute', 'ambush', 'moonrite']);
 const ALWAYS_ON_MOD_RUNES = new Set(['focus', 'blood']);
@@ -132,7 +228,18 @@ const WP_SKILL_NAMES = {
 };
 
 function emptySources() {
-  return { skill: 0, runeProc: 0, runeMod: 0, cardExact: 0, cardMod: 0, gearExact: 0, gearMod: 0, dot: 0 };
+  return {
+    skill: 0,
+    runeProc: 0,
+    runeMod: 0,
+    cardExact: 0,
+    cardMod: 0,
+    gearExact: 0,
+    gearMod: 0,
+    dot: 0,
+    reactionExact: 0,
+    reactionMod: 0,
+  };
 }
 
 function formatSources(src) {
@@ -148,6 +255,9 @@ function formatSources(src) {
     gearExact: s.gearExact || 0,
     gearMod: s.gearMod || 0,
     dot: s.dot || 0,
+    reaction: (s.reactionExact || 0) + (s.reactionMod || 0),
+    reactionExact: s.reactionExact || 0,
+    reactionMod: s.reactionMod || 0,
   };
 }
 
@@ -155,8 +265,45 @@ function sourceCatOfSkill(skillKey) {
   if (typeof skillKey === 'string') {
     if (skillKey.startsWith('bl_art_')) return 'card';
     if (skillKey.startsWith('wp_')) return 'gear';
+    if (skillKey.startsWith('reaction_') || REACTION_META[skillKey]) return 'reaction';
+    if (DOT_META[skillKey] && skillKey !== 'bl_venom') return 'dot';
   }
   return 'skill';
+}
+
+function resolveExplicitReactionKey(ev, rawSkill) {
+  if (ev?.reaction && REACTION_META[ev.reaction]) return ev.reaction;
+  if (rawSkill) {
+    if (REACTION_META[rawSkill]) return rawSkill;
+    const m = /^(?:reaction|rx)_(.+)$/.exec(rawSkill);
+    if (m && REACTION_META[m[1]]) return m[1];
+  }
+  return null;
+}
+
+function normalizeDotKind(rawSkill, ev, mob) {
+  const canon = (k) => {
+    if (k === 'dot_burn' || k === 'burn') return 'burn';
+    if (k === 'dot_poison' || k === 'poison') return 'poison';
+    if (k === 'dot_bleed' || k === 'bleed') return 'bleed';
+    return k;
+  };
+  if (rawSkill === 'bl_venom') return { id: 'bl_venom', inferred: false, sourceBucket: 'runeProc' };
+  if (ev?.dotKind) {
+    const dk = canon(String(ev.dotKind));
+    return { id: dk, inferred: false, sourceBucket: dk === 'bl_venom' ? 'runeProc' : 'dot' };
+  }
+  if (rawSkill) {
+    const dk = canon(String(rawSkill));
+    return { id: dk, inferred: false, sourceBucket: dk === 'bl_venom' ? 'runeProc' : 'dot' };
+  }
+  const st = ev?.targetSt;
+  const hasBurn = !!(st?.burn || mob?.st?.burn > 0);
+  const hasPoison = !!(st?.poison || mob?.poisoned);
+  if (hasBurn && !hasPoison) return { id: 'burn', inferred: true, sourceBucket: 'dot' };
+  if (hasPoison && !hasBurn) return { id: 'poison', inferred: true, sourceBucket: 'dot' };
+  if (hasBurn && hasPoison) return { id: '__dot_burn_poison__', inferred: true, sourceBucket: 'dot' };
+  return { id: '__dot_unknown__', inferred: true, sourceBucket: 'dot' };
 }
 
 const RING_SIZE = 300;
@@ -165,6 +312,7 @@ const MAX_PLAYER_MIRRORS = 300;
 const MAX_LOOT_CACHE = 300;
 const MAX_FIRST_HITS = 400;
 const MAX_LAST_HITS = 400;
+const MAX_PENDING_REACTIONS = 16;
 const MAX_COUNTED_KILLS = 500;
 const MAX_SEEN_RUNES = 500;
 const MAX_ACTORS = 80;
@@ -272,6 +420,7 @@ export class TelemetryEngine {
     this.armours = {};
     this.monsters = {};
     this.reactions = {};
+    this.dots = {};
     this.actors = {};
     this.buffs = {};
     this.buffSampleMs = 0;
@@ -290,6 +439,8 @@ export class TelemetryEngine {
     this.directDmgTotal = 0;
     this.dotDmgTotal = 0;
     this.procDmgTotal = 0;
+    this.reactionDmgTotal = 0;
+    this._reactPct = 0;
     this.srcTotals = emptySources();
     this._cardMods = { critDmg: 0, bossDmg: 0, el: {} };
     this._gearMods = { critDmg: 0, bossDmg: 0, el: {}, sk: {} };
@@ -341,6 +492,8 @@ export class TelemetryEngine {
     this._lootCache = new Map();
     this._firstHitByTarget = new Map();
     this._lastHitByTarget = new Map(); // targetId -> { t, skillKey }
+    this._lastDirectHitByTarget = new Map(); // targetId -> { t, dmg, skillKey, wRune, wCard, wGear, reactionApplied, deltas }
+    this._pendingReactions = []; // recent reaction events waiting to correlate blast/mult hits (bounded MAX_PENDING_REACTIONS)
     this._countedKills = new Map(); // targetId -> t
 
     this.bossEncounters = [];
@@ -430,19 +583,26 @@ export class TelemetryEngine {
       const isCardArt = typeof skillKey === 'string' && skillKey.startsWith('bl_art_');
       const isWp = typeof skillKey === 'string' && skillKey.startsWith('wp_');
       const cardEl = isCardArt ? skillKey.slice(7) : null;
+      const rxKey = /^(?:reaction|rx)_(.+)$/.exec(String(skillKey || ''))?.[1] || (REACTION_META[skillKey] ? skillKey : null);
+      const rxMeta = rxKey ? REACTION_META[rxKey] : null;
+      const dotMeta = DOT_META[skillKey] || null;
       const name = isBasic
         ? 'ตีปกติ (Basic)'
         : isShared
           ? 'รูนส่วนกลาง (Shared)'
-          : isCardArt && (!skMeta?.name || skMeta.name === 'วิชามอน')
-            ? `วิชามอน/การ์ด (${ELEMENT_META[cardEl]?.name || cardEl})`
-            : isWp && !skMeta?.name
-              ? (WP_SKILL_NAMES[skillKey] || skillKey)
-              : (skMeta?.name || skillKey);
+          : rxMeta
+            ? `${rxMeta.name} (ปฏิกิริยา)`
+            : dotMeta
+              ? dotMeta.name
+              : isCardArt && (!skMeta?.name || skMeta.name === 'วิชามอน')
+                ? `วิชามอน/การ์ด (${ELEMENT_META[cardEl]?.name || cardEl})`
+                : isWp && !skMeta?.name
+                  ? (WP_SKILL_NAMES[skillKey] || skillKey)
+                  : (skMeta?.name || skillKey);
       rec = this.skills[skillKey] = {
         id: skillKey,
         name,
-        element: skMeta?.element || (isCardArt && cardEl !== 'neutral' ? cardEl : null),
+        element: skMeta?.element || KNOWN_SKILL_ELEMENTS[skillKey] || rxMeta?.element || dotMeta?.element || (isCardArt && cardEl !== 'neutral' ? cardEl : null),
         isBasic,
         sourceCat: sourceCatOfSkill(skillKey),
         src: emptySources(),
@@ -472,6 +632,99 @@ export class TelemetryEngine {
       rec.element = rec.element || this.meta.skills[rec.id].element || null;
     }
     return rec;
+  }
+
+  _ensureReaction(key) {
+    let rec = this.reactions[key];
+    if (!rec) {
+      const m = REACTION_META[key] || { name: key, combo: '', element: 'neutral', color: '#fb923c', mode: 'blast' };
+      rec = this.reactions[key] = {
+        key,
+        name: m.name,
+        combo: m.combo || '',
+        element: m.element || 'neutral',
+        color: m.color || '#fb923c',
+        mode: m.mode || 'blast',
+        count: 0,
+        dmg: 0,
+        exactDmg: 0,
+        estDmg: 0,
+        hits: 0,
+        maxHit: 0,
+      };
+    }
+    return rec;
+  }
+
+  _recordDotTick(dotInfo, dmg, crit, el) {
+    const id = dotInfo?.id || '__dot_unknown__';
+    let rec = this.dots[id];
+    if (!rec) {
+      const dm = DOT_META[id] || {};
+      const effEl = dm.element || el || 'neutral';
+      rec = this.dots[id] = {
+        id,
+        name: dm.name || this.meta.skills[id]?.name || id,
+        element: effEl,
+        color: dm.color || ELEMENT_META[effEl]?.color || '#4ade80',
+        dmg: 0,
+        ticks: 0,
+        crits: 0,
+        minTick: Infinity,
+        maxTick: 0,
+        inferred: !!dotInfo?.inferred,
+        sourceBucket: dotInfo?.sourceBucket || 'dot',
+      };
+    }
+    rec.dmg += dmg;
+    rec.ticks++;
+    if (crit) rec.crits++;
+    if (dmg > 0) {
+      rec.minTick = Math.min(rec.minTick, dmg);
+      rec.maxTick = Math.max(rec.maxTick, dmg);
+    }
+    if (!dotInfo?.inferred && rec.inferred) rec.inferred = false;
+    return rec;
+  }
+
+  _prunePendingReactions(t, maxAgeMs = 150) {
+    while (this._pendingReactions.length && t - this._pendingReactions[0].t > maxAgeMs) {
+      this._pendingReactions.shift();
+    }
+  }
+
+  _reallocateReactionMultiplier(prev, rxKey) {
+    if (!prev || !(prev.dmg > 0)) return 0;
+    const wReact = Math.log(1 + (1 + this._reactPct / 100));
+    const wSum = prev.wRune + prev.wCard + prev.wGear + wReact;
+    if (!(wSum > 1e-9)) return 0;
+    const baseDmg = prev.dmg / Math.exp(wSum);
+    const bonus = prev.dmg - baseDmg;
+    const nextDeltas = {
+      skill: baseDmg,
+      runeMod: bonus * (prev.wRune / wSum),
+      cardMod: bonus * (prev.wCard / wSum),
+      gearMod: bonus * (prev.wGear / wSum),
+      reactionMod: bonus * (wReact / wSum),
+    };
+    const oldDeltas = prev.deltas || { skill: prev.dmg, runeMod: 0, cardMod: 0, gearMod: 0, reactionMod: 0 };
+    const skillRec = this.skills[prev.skillKey];
+    for (const k of ['skill', 'runeMod', 'cardMod', 'gearMod', 'reactionMod']) {
+      const diff = nextDeltas[k] - (oldDeltas[k] || 0);
+      if (skillRec) skillRec.src[k] += diff;
+      this.srcTotals[k] += diff;
+    }
+    prev.deltas = nextDeltas;
+    const added = nextDeltas.reactionMod;
+    if (added > 0) {
+      this.reactionDmgTotal += added;
+      const rx = this._ensureReaction(rxKey);
+      rx.estDmg += added;
+      rx.dmg += added;
+      rx.hits++;
+      rx.maxHit = Math.max(rx.maxHit, added);
+    }
+    return added;
   }
 
   _syncEquippedRunes(runesMap, t) {
@@ -654,6 +907,7 @@ export class TelemetryEngine {
     if (s.cardMods && typeof s.cardMods === 'object') this._cardMods = s.cardMods;
     if (s.gearMods && typeof s.gearMods === 'object') this._gearMods = s.gearMods;
     if (s.totalMods && typeof s.totalMods === 'object') this._totalMods = s.totalMods;
+    if (Number.isFinite(s.reactPct)) this._reactPct = Math.max(0, Number(s.reactPct));
 
     const potCounts = {
       red: s.potions || 0,
@@ -850,8 +1104,42 @@ export class TelemetryEngine {
       const actor = ev.actorId || ev.sourceId || '';
       if (!meId || actor === meId) {
         const key = ev.key || 'reaction';
-        this.reactions[key] = (this.reactions[key] || 0) + 1;
-        this._addLog(t, 'reaction', `ปฏิกิริยา: ${REACTION_NAMES[key] || key}`);
+        const rx = this._ensureReaction(key);
+        rx.count++;
+        const meta = REACTION_META[key];
+        this._addLog(t, 'reaction', `ปฏิกิริยา: ${meta?.name || key}${meta?.combo ? ' (' + meta.combo + ')' : ''}`);
+
+        this._prunePendingReactions(t, 150);
+        const prev = ev.targetId ? this._lastDirectHitByTarget.get(ev.targetId) : null;
+        if (prev && t - prev.t <= 40 && !prev.reactionApplied) {
+          prev.reactionApplied = true;
+          if (meta?.hasMult) {
+            this._reallocateReactionMultiplier(prev, key);
+          }
+          if (meta?.hasBlast) {
+            this._pendingReactions.push({
+              key,
+              targetId: ev.targetId || null,
+              t,
+              triggerConsumed: true,
+              triggerDmg: prev.dmg,
+              multApplied: !!meta.hasMult,
+              blastHits: 0,
+            });
+            if (this._pendingReactions.length > MAX_PENDING_REACTIONS) this._pendingReactions.shift();
+          }
+        } else if (meta?.hasBlast || meta?.hasMult) {
+          this._pendingReactions.push({
+            key,
+            targetId: ev.targetId || null,
+            t,
+            triggerConsumed: false,
+            triggerDmg: 0,
+            multApplied: false,
+            blastHits: 0,
+          });
+          if (this._pendingReactions.length > MAX_PENDING_REACTIONS) this._pendingReactions.shift();
+        }
       }
     } else if (ev.type === 's2rune' || ev.type === 's2trap' || ev.type === 'shot') {
       const actor = ev.actorId || ev.sourceId || '';
@@ -975,6 +1263,7 @@ export class TelemetryEngine {
 
   _handleOwnOutgoingCombat(ev, dmg, t) {
     this._touchCombatWindow(t);
+    this._prunePendingReactions(t, 120);
 
     const rawSkill = ev.skillId || '';
     const isCardArt = rawSkill.startsWith('bl_art_');
@@ -984,9 +1273,63 @@ export class TelemetryEngine {
     const isDot = !!ev.dot;
     const isMiss = !!(ev.miss || ev.evade || ev.refused);
 
-    const parentSkillKey = isChildRune
-      ? this._findParentSkillForChildRune(childRuneKind, ev.targetId, t)
-      : (rawSkill || '__basic__');
+    // Path 1: explicit server-tagged reaction damage hit
+    let matchedRxKey = null;
+    let reactionMode = null;
+    if (!isChildRune && !isCardArt && !isWeaponProc && !isDot) {
+      const explicitRx = resolveExplicitReactionKey(ev, rawSkill);
+      if (explicitRx) {
+        matchedRxKey = explicitRx;
+        reactionMode = 'exact';
+      } else if (rawSkill === 'reaction') {
+        for (let i = this._pendingReactions.length - 1; i >= 0; i--) {
+          const pr = this._pendingReactions[i];
+          if (t - pr.t <= 120) {
+            matchedRxKey = pr.key;
+            reactionMode = 'exact';
+            break;
+          }
+        }
+      }
+      if (matchedRxKey) {
+        for (let i = this._pendingReactions.length - 1; i >= 0; i--) {
+          const pr = this._pendingReactions[i];
+          if (pr.key === matchedRxKey && t - pr.t <= 120) {
+            pr.explicitSeen = true;
+            break;
+          }
+        }
+      }
+    }
+
+    // Path 2: untagged same-tick blast reaction correlation
+    if (!matchedRxKey && !isMiss && !isChildRune && !isCardArt && !isWeaponProc && !isDot && !rawSkill && !ev.crit && !(Array.isArray(ev.runes) && ev.runes.length)) {
+      for (let i = this._pendingReactions.length - 1; i >= 0; i--) {
+        const pr = this._pendingReactions[i];
+        if (t - pr.t > 80 || pr.explicitSeen) continue;
+        const meta = REACTION_META[pr.key];
+        if (!meta?.hasBlast) continue;
+        if (!pr.triggerConsumed && ev.targetId && pr.targetId && ev.targetId === pr.targetId) continue;
+        if (meta.blastOnlySelf && pr.targetId && ev.targetId && ev.targetId !== pr.targetId) continue;
+        if (!meta.blastHitsSelf && pr.targetId && ev.targetId && ev.targetId === pr.targetId) continue;
+        if (meta.maxBlastHits && pr.blastHits >= meta.maxBlastHits) continue;
+        pr.blastHits++;
+        matchedRxKey = pr.key;
+        reactionMode = 'est';
+        break;
+      }
+    }
+
+    const mob = ev.targetId ? this._monsterMirrors.get(ev.targetId) : null;
+    const dotInfo = isDot ? normalizeDotKind(rawSkill, ev, mob) : null;
+
+    const parentSkillKey = matchedRxKey
+      ? ('reaction_' + matchedRxKey)
+      : isChildRune
+        ? this._findParentSkillForChildRune(childRuneKind, ev.targetId, t)
+        : isDot
+          ? dotInfo.id
+          : (rawSkill || '__basic__');
 
     const skillRec = this._ensureSkill(parentSkillKey, t);
     const el = this._resolveElement(ev, rawSkill || parentSkillKey);
@@ -996,11 +1339,10 @@ export class TelemetryEngine {
     if (ev.refused) { this.totalRefused++; skillRec.refused++; }
     if (isMiss) return;
 
-    const mob = ev.targetId ? this._monsterMirrors.get(ev.targetId) : null;
     const isBossTarget = !!(mob && !mob.dummy && (mob.boss || mob.rootBoss || mob.storyBoss));
 
     // Track last direct non-child skill hit per monster for shared proc rune attribution
-    if (!isChildRune && !isDot && ev.targetId) {
+    if (!isChildRune && !isDot && !matchedRxKey && ev.targetId) {
       this._lastHitByTarget.delete(ev.targetId);
       this._lastHitByTarget.set(ev.targetId, { t, skillKey: parentSkillKey });
       capMap(this._lastHitByTarget, MAX_LAST_HITS);
@@ -1013,12 +1355,29 @@ export class TelemetryEngine {
     // Totals & window ring
     this.totalDmgDealt += dmg;
     if (isChildRune) this.procDmgTotal += dmg;
+    else if (matchedRxKey) {} // accounted in reactionDmgTotal
     else if (isDot) this.dotDmgTotal += dmg;
     else this.directDmgTotal += dmg;
 
     if (isChildRune) {
       skillRec.src.runeProc += dmg;
       this.srcTotals.runeProc += dmg;
+      if (isDot) this._recordDotTick(dotInfo, dmg, !!ev.crit, el);
+    } else if (matchedRxKey) {
+      this.reactionDmgTotal += dmg;
+      const rx = this._ensureReaction(matchedRxKey);
+      if (reactionMode === 'exact') {
+        skillRec.src.reactionExact += dmg;
+        this.srcTotals.reactionExact += dmg;
+        rx.exactDmg += dmg;
+      } else {
+        skillRec.src.reactionMod += dmg;
+        this.srcTotals.reactionMod += dmg;
+        rx.estDmg += dmg;
+      }
+      rx.dmg += dmg;
+      rx.hits++;
+      rx.maxHit = Math.max(rx.maxHit, dmg);
     } else if (isCardArt) {
       skillRec.src.cardExact += dmg;
       this.srcTotals.cardExact += dmg;
@@ -1028,6 +1387,7 @@ export class TelemetryEngine {
     } else if (isDot) {
       skillRec.src.dot += dmg;
       this.srcTotals.dot += dmg;
+      this._recordDotTick(dotInfo, dmg, !!ev.crit, el);
     } else {
       let runeFactor = 1;
       const taggedSet = new Set();
@@ -1071,25 +1431,80 @@ export class TelemetryEngine {
         addBucketSplit(0, this._gearMods.sk?.[parentSkillKey] || 0, this._totalMods.sk?.[parentSkillKey] || 0);
       }
 
+      // Case II: pending reaction (arrived before its triggering direct hit on targetId)
+      let reactMultKey = null;
+      let wReact = 0;
+      if (ev.targetId) {
+        for (let i = this._pendingReactions.length - 1; i >= 0; i--) {
+          const pr = this._pendingReactions[i];
+          if (t - pr.t <= 80 && pr.targetId === ev.targetId && !pr.triggerConsumed) {
+            pr.triggerConsumed = true;
+            pr.triggerDmg = dmg;
+            const rxMeta = REACTION_META[pr.key];
+            if (rxMeta?.hasMult && !pr.multApplied) {
+              pr.multApplied = true;
+              reactMultKey = pr.key;
+              wReact = Math.log(1 + (1 + this._reactPct / 100));
+            }
+            break;
+          }
+        }
+      }
+
       const wRune = runeFactor > 1.0001 ? Math.log(runeFactor) : 0;
-      const wSum = wRune + wCard + wGear;
-      if (wSum > 1e-9) {
-        const baseDmg = dmg / Math.exp(wSum);
+      const wSum = wRune + wCard + wGear + wReact;
+      let baseDmg = dmg;
+      let runeModAdd = 0;
+      let cardModAdd = 0;
+      let gearModAdd = 0;
+      let reactionModAdd = 0;
+      if (wSum > 1e-9 && dmg > 0) {
+        baseDmg = dmg / Math.exp(wSum);
         const bonus = dmg - baseDmg;
-        const runeModAdd = bonus * (wRune / wSum);
-        const cardModAdd = bonus * (wCard / wSum);
-        const gearModAdd = bonus * (wGear / wSum);
-        skillRec.src.skill += baseDmg;
-        skillRec.src.runeMod += runeModAdd;
-        skillRec.src.cardMod += cardModAdd;
-        skillRec.src.gearMod += gearModAdd;
-        this.srcTotals.skill += baseDmg;
-        this.srcTotals.runeMod += runeModAdd;
-        this.srcTotals.cardMod += cardModAdd;
-        this.srcTotals.gearMod += gearModAdd;
-      } else {
-        skillRec.src.skill += dmg;
-        this.srcTotals.skill += dmg;
+        runeModAdd = bonus * (wRune / wSum);
+        cardModAdd = bonus * (wCard / wSum);
+        gearModAdd = bonus * (wGear / wSum);
+        reactionModAdd = bonus * (wReact / wSum);
+      }
+      skillRec.src.skill += baseDmg;
+      skillRec.src.runeMod += runeModAdd;
+      skillRec.src.cardMod += cardModAdd;
+      skillRec.src.gearMod += gearModAdd;
+      skillRec.src.reactionMod += reactionModAdd;
+      this.srcTotals.skill += baseDmg;
+      this.srcTotals.runeMod += runeModAdd;
+      this.srcTotals.cardMod += cardModAdd;
+      this.srcTotals.gearMod += gearModAdd;
+      this.srcTotals.reactionMod += reactionModAdd;
+
+      if (reactionModAdd > 0 && reactMultKey) {
+        this.reactionDmgTotal += reactionModAdd;
+        const rx = this._ensureReaction(reactMultKey);
+        rx.estDmg += reactionModAdd;
+        rx.dmg += reactionModAdd;
+        rx.hits++;
+        rx.maxHit = Math.max(rx.maxHit, reactionModAdd);
+      }
+
+      if (ev.targetId) {
+        this._lastDirectHitByTarget.delete(ev.targetId);
+        this._lastDirectHitByTarget.set(ev.targetId, {
+          t,
+          dmg,
+          skillKey: parentSkillKey,
+          wRune,
+          wCard,
+          wGear,
+          reactionApplied: !!reactMultKey,
+          deltas: {
+            skill: baseDmg,
+            runeMod: runeModAdd,
+            cardMod: cardModAdd,
+            gearMod: gearModAdd,
+            reactionMod: reactionModAdd,
+          },
+        });
+        capMap(this._lastDirectHitByTarget, MAX_LAST_HITS);
       }
     }
 
@@ -1134,14 +1549,14 @@ export class TelemetryEngine {
         skillRec.crits++;
         skillRec.critDmg += dmg;
       }
-      if (!isDot && dmg > 0) {
+      if (dmg > 0) {
         skillRec.minHit = Math.min(skillRec.minHit, dmg);
         skillRec.maxHit = Math.max(skillRec.maxHit, dmg);
       }
     }
 
     // Tagged modifier runes from server `ev.runes`
-    if (Array.isArray(ev.runes) && ev.runes.length && !isChildRune && !isDot) {
+    if (Array.isArray(ev.runes) && ev.runes.length && !isChildRune && !isDot && !matchedRxKey) {
       const est = buildRuneBonusEstimate(skillRec, ev.runes);
       for (const rKind of ev.runes) {
         let rt = skillRec.runeTriggers[rKind];
@@ -1211,9 +1626,20 @@ export class TelemetryEngine {
       this._recordKill(ev.targetId, mob.type, t);
     }
 
-    if (dmg >= 1 && !isDot && (ev.crit || isChildRune || dmg >= 150)) {
-      const label = isChildRune ? `${runeName(childRuneKind, this.meta)} (${skillRec.name})` : skillRec.name;
-      this._addLog(t, isChildRune ? 'rune' : 'hit', `${label} → ${dmg}${ev.crit ? ' CRIT!' : ''}`, mob?.type || '', dmg, !!ev.crit);
+    if (dmg >= 1 && !isDot && (ev.crit || isChildRune || matchedRxKey || dmg >= 150)) {
+      const label = matchedRxKey
+        ? `${REACTION_META[matchedRxKey]?.name || matchedRxKey} (ปฏิกิริยา)`
+        : isChildRune
+          ? `${runeName(childRuneKind, this.meta)} (${skillRec.name})`
+          : skillRec.name;
+      this._addLog(
+        t,
+        matchedRxKey ? 'reaction' : (isChildRune ? 'rune' : 'hit'),
+        `${label} → ${dmg}${ev.crit ? ' CRIT!' : ''}`,
+        mob?.type || '',
+        dmg,
+        !!ev.crit
+      );
     }
   }
 
@@ -1459,7 +1885,9 @@ export class TelemetryEngine {
           name: sk.name,
           element: sk.element || this.activeElement || 'neutral',
           isBasic: sk.isBasic,
-          sourceCat: sk.sourceCat || sourceCatOfSkill(sk.id),
+          sourceCat: (sk.directDmg === 0 && sk.procChildDmg === 0 && sk.dotDmg > 0)
+            ? 'dot'
+            : (sk.sourceCat || sourceCatOfSkill(sk.id)),
           sources: formatSources(sk.src),
           totalDmg: sk.totalDmg,
           directDmg: sk.directDmg,
@@ -1471,7 +1899,7 @@ export class TelemetryEngine {
           dotTicks: sk.dotTicks,
           crits: sk.crits,
           critRate: sk.hits > 0 ? (sk.crits / sk.hits) * 100 : 0,
-          avgHit: sk.hits > 0 ? sk.directDmg / sk.hits : 0,
+          avgHit: sk.hits > 0 ? sk.directDmg / sk.hits : (sk.dotTicks > 0 ? sk.dotDmg / sk.dotTicks : 0),
           minHit: sk.minHit === Infinity ? 0 : sk.minHit,
           maxHit: sk.maxHit,
           casts: sk.casts,
@@ -1592,6 +2020,7 @@ export class TelemetryEngine {
         directDmg: this.directDmgTotal,
         dotDmg: this.dotDmgTotal,
         procDmg: this.procDmgTotal,
+        reactionDmg: this.reactionDmgTotal,
         totalHits: this.totalHits,
         critRate,
         critShare,
@@ -1655,11 +2084,23 @@ export class TelemetryEngine {
           critRate: e.hits > 0 ? (e.crits / e.hits) * 100 : 0,
         }))
         .sort((a, b) => b.dmg - a.dmg),
-      reactions: Object.entries(this.reactions).map(([k, count]) => ({
-        key: k,
-        name: REACTION_NAMES[k] || k,
-        count,
-      })),
+      dots: Object.values(this.dots)
+        .map((d) => ({
+          ...d,
+          minTick: d.minTick === Infinity ? 0 : d.minTick,
+          avgTick: d.ticks > 0 ? d.dmg / d.ticks : 0,
+          sharePct: this.totalDmgDealt > 0 ? (d.dmg / this.totalDmgDealt) * 100 : 0,
+          dps: d.dmg / dpsDivSec,
+        }))
+        .sort((a, b) => b.dmg - a.dmg || b.ticks - a.ticks),
+      reactions: Object.values(this.reactions)
+        .map((r) => ({
+          ...r,
+          avgDmg: r.count > 0 ? r.dmg / r.count : (r.hits > 0 ? r.dmg / r.hits : 0),
+          sharePct: this.totalDmgDealt > 0 ? (r.dmg / this.totalDmgDealt) * 100 : 0,
+          dps: r.dmg / dpsDivSec,
+        }))
+        .sort((a, b) => b.dmg - a.dmg || b.count - a.count),
       armours: Object.values(this.armours)
         .map((a) => ({
           ...a,
@@ -1766,6 +2207,20 @@ export class TelemetryEngine {
         estBonusDmg: Math.round(r.estBonusDmg),
         triggers: r.triggers,
       })),
+      dots: s.dots.slice(0, 8).map((d) => ({
+        id: d.id,
+        name: d.name,
+        dmg: d.dmg,
+        ticks: d.ticks,
+        sharePct: +d.sharePct.toFixed(1),
+      })),
+      reactions: s.reactions.slice(0, 10).map((r) => ({
+        key: r.key,
+        name: r.name,
+        count: r.count,
+        dmg: Math.round(r.dmg),
+        sharePct: +r.sharePct.toFixed(1),
+      })),
       elements: s.elements,
     };
   }
@@ -1789,6 +2244,13 @@ export class TelemetryEngine {
       for (const rt of sk.runeTriggers) {
         lines.push(['RuneMod', `${sk.id}:${rt.kind}`, rt.name, sk.element, rt.totalDmg, '', '', rt.hits, '', rt.avgWith.toFixed(0), '', rt.hits, rt.estBonusDmg.toFixed(0), sk.name].map(esc).join(','));
       }
+    }
+    for (const d of s.dots) {
+      const critPct = d.ticks > 0 ? ((d.crits / d.ticks) * 100).toFixed(1) : '0.0';
+      lines.push(['DoT', d.id, d.name, d.element, d.dmg, d.sharePct.toFixed(2), d.dps.toFixed(1), d.ticks, critPct, d.avgTick.toFixed(0), d.maxTick, d.ticks, '', d.sourceBucket].map(esc).join(','));
+    }
+    for (const r of s.reactions) {
+      lines.push(['Reaction', r.key, r.name, r.element, Math.round(r.dmg), r.sharePct.toFixed(2), r.dps.toFixed(1), r.hits, '', r.avgDmg.toFixed(0), Math.round(r.maxHit), r.count, Math.round(r.estDmg), r.combo].map(esc).join(','));
     }
     return lines.join('\n');
   }

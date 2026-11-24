@@ -560,3 +560,214 @@ test('per-skill & global 6-source damage breakdown: skill, runeProc, runeMod, ca
   assert.ok(g.cardExact === 700 && g.cardMod > 0);
   assert.ok(g.gearExact === 600 && g.gearMod > 0);
 });
+
+test('per-DoT separation & empty-skillId DoT inference without dumping into __basic__', () => {
+  const clock = makeClock();
+  const eng = new TelemetryEngine({ tabId: 6, now: clock });
+  seedBaseMeta(eng, clock);
+  snapFrame(eng, clock, {
+    self: {
+      buildLoot: {
+        runes: { rg_piercer: ['venom:2:0:0'] },
+      },
+    },
+    monsters: [
+      { id: 'm1', type: 'boar', lv: 36, dead: 0, st: { burn: 2 } },
+      { id: 'm2', type: 'golem', lv: 40, dead: 0, poisoned: true },
+      { id: 'm3', type: 'wolf', lv: 37, dead: 0, st: { burn: 1 }, poisoned: true },
+      { id: 'm4', type: 'boar', lv: 36, dead: 0 },
+    ],
+  });
+
+  clock.advance(500);
+  // Explicit DoTs
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm1', skillId: 'burn', damage: 200, dot: true });
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm2', skillId: 'poison', damage: 150, dot: true });
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm1', skillId: 'rp_bleed', damage: 180, dot: true });
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm1', skillId: 'as_bleed', damage: 220, dot: true });
+  // Rune Proc DoT (bl_venom) must count in runeProc, NOT double-counted in dot
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm1', skillId: 'bl_venom', damage: 300, dot: true });
+
+  // Untagged DoTs (skillId: null) inferred via snapshot mirror + targetSt
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm1', skillId: null, damage: 100, dot: true }); // snapshot st.burn -> burn
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm2', skillId: null, damage: 90, dot: true });  // snapshot poisoned -> poison
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm3', skillId: null, damage: 110, dot: true }); // both -> __dot_burn_poison__
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm4', skillId: null, damage: 70, dot: true, targetSt: { burn: true, poison: false } }); // targetSt -> burn
+
+  clock.advance(500);
+  const s = eng.getSummary(clock.get());
+
+  // NONE dumped into __basic__
+  assert.equal(s.skills.some((x) => x.id === '__basic__'), false);
+
+  const burnDot = s.dots.find((d) => d.id === 'burn');
+  const poisonDot = s.dots.find((d) => d.id === 'poison');
+  const rpDot = s.dots.find((d) => d.id === 'rp_bleed');
+  const asDot = s.dots.find((d) => d.id === 'as_bleed');
+  const venomDot = s.dots.find((d) => d.id === 'bl_venom');
+  const bothDot = s.dots.find((d) => d.id === '__dot_burn_poison__');
+
+  assert.equal(burnDot.dmg, 200 + 100 + 70);
+  assert.equal(burnDot.ticks, 3);
+  assert.equal(burnDot.inferred, false); // had explicit burn tick too
+  assert.equal(burnDot.sourceBucket, 'dot');
+
+  assert.equal(poisonDot.dmg, 150 + 90);
+  assert.equal(poisonDot.ticks, 2);
+  assert.equal(rpDot.dmg, 180);
+  assert.equal(asDot.dmg, 220);
+
+  assert.equal(bothDot.dmg, 110);
+  assert.equal(bothDot.inferred, true);
+
+  assert.equal(venomDot.dmg, 300);
+  assert.equal(venomDot.sourceBucket, 'runeProc');
+
+  // No double counting: bl_venom is in runeProc (300), all other DoTs in dot
+  const expectedDotBucket = 200 + 150 + 180 + 220 + 100 + 90 + 110 + 70;
+  assert.equal(s.sources.runeProc, 300);
+  assert.equal(s.sources.dot, expectedDotBucket);
+  assert.equal(s.kpis.dotDmg, expectedDotBucket);
+  assert.equal(s.kpis.totalDmgDealt, expectedDotBucket + 300);
+});
+
+test('elemental reactions (all 3 wire paths, both event orderings, 7-source sum invariant, exports & bounds)', () => {
+  const clock = makeClock();
+  const eng = new TelemetryEngine({ tabId: 7, now: clock });
+  seedBaseMeta(eng, clock);
+  snapFrame(eng, clock, {
+    self: {
+      reactPct: 30, // boost = 1.3 -> mult k = 1 + 1.3 = 2.3
+      cardMods: { critDmg: 0, bossDmg: 0, el: { fire: 20 } },
+      gearMods: { critDmg: 0, bossDmg: 0, el: { wind: 15 }, sk: { gale: 10 } },
+      totalMods: { critDmg: 0, bossDmg: 0, el: { fire: 20, wind: 15 }, sk: { gale: 10 } },
+      buildLoot: { runes: { gale: ['execute:2:0:0'] } },
+    },
+    monsters: [
+      { id: 'm1', type: 'boar', lv: 36, dead: 0 },
+      { id: 'm2', type: 'golem', lv: 40, dead: 0 },
+      { id: 'm3', type: 'wolf', lv: 37, dead: 0 },
+      { id: 'm4', type: 'boar', lv: 36, dead: 0 },
+      { id: 'm5', type: 'boar', lv: 36, dead: 0 },
+    ],
+  });
+
+  // Path 1: Explicit server-tagged reaction hits (`reaction_overload` and `ev.reaction: 'poisonfire'`)
+  clock.advance(100);
+  eng.recordEvent({ type: 'reaction', actorId: 'hero-1', targetId: 'm1', key: 'overload' });
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm1', skillId: 'reaction_overload', damage: 900 });
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm2', skillId: 'poisonfire', reaction: 'poisonfire', damage: 600 });
+
+  // Path 2a: Untagged same-tick overload AFTER skill hit
+  clock.advance(200);
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm1', skillId: 'gale', damage: 1000, runes: ['execute'] });
+  eng.recordEvent({ type: 'reaction', actorId: 'hero-1', targetId: 'm1', key: 'overload' });
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm1', skillId: null, damage: 750 }); // blast hits self
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm2', skillId: null, damage: 750 }); // blast hits neighbor
+
+  // Path 2b: Untagged same-tick overload BEFORE basic trigger hit -> basic hit must NOT be swallowed!
+  clock.advance(200);
+  eng.recordEvent({ type: 'reaction', actorId: 'hero-1', targetId: 'm1', key: 'overload' });
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm1', skillId: null, damage: 500 }); // triggering basic hit
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm1', skillId: null, damage: 400 }); // overload blast on self
+
+  // Path 2c: Superconduct chain capped at 3 non-self mobs (4th neighbor stays basic)
+  clock.advance(200);
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm1', skillId: 'gale', damage: 800 });
+  eng.recordEvent({ type: 'reaction', actorId: 'hero-1', targetId: 'm1', key: 'superconduct' });
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm2', skillId: null, damage: 450 }); // 1
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm3', skillId: null, damage: 450 }); // 2
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm4', skillId: null, damage: 450 }); // 3 (cap)
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm5', skillId: null, damage: 210 }); // beyond cap -> __basic__
+
+  // Path 2d: Mist single self-target burst (neighbor hit must NOT attach)
+  clock.advance(200);
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm1', skillId: 'rg_piercer', damage: 400 });
+  eng.recordEvent({ type: 'reaction', actorId: 'hero-1', targetId: 'm1', key: 'mist' });
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm1', skillId: null, damage: 1100 }); // self burst
+
+  // Path 3a: Case I in-place multiplier (`cleanse`, hit-then-reaction within 40ms, zero card/gear mods on holy)
+  clock.advance(200);
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm2', skillId: 'rg_piercer', element: 'holy', damage: 2300 });
+  eng.recordEvent({ type: 'reaction', actorId: 'hero-1', targetId: 'm2', key: 'cleanse' });
+
+  // Path 3b: Case II in-place multiplier (`steam`, reaction-then-hit) + AoE splash on non-self mob only
+  clock.advance(200);
+  eng.recordEvent({ type: 'reaction', actorId: 'hero-1', targetId: 'm1', key: 'steam' });
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm1', skillId: 'rg_piercer', element: 'fire', damage: 2760 }); // 1000 * 1.2 * 2.3 = 2760
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm2', skillId: null, damage: 680 }); // steam AoE splash on m2
+
+  // Utility reactions (`wildfire`, `conduct`) -> count++, dmg === 0
+  clock.advance(200);
+  eng.recordEvent({ type: 'reaction', actorId: 'hero-1', targetId: 'm1', key: 'wildfire' });
+  eng.recordEvent({ type: 'reaction', actorId: 'hero-1', targetId: 'm2', key: 'conduct' });
+
+  // Fire a few burns too
+  eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: 'm1', skillId: 'burn', damage: 160, dot: true });
+
+  clock.advance(500);
+  const s = eng.getSummary(clock.get());
+
+  // Exact + Est reaction checks
+  const rxOver = s.reactions.find((r) => r.key === 'overload');
+  const rxPf = s.reactions.find((r) => r.key === 'poisonfire');
+  const rxSc = s.reactions.find((r) => r.key === 'superconduct');
+  const rxMist = s.reactions.find((r) => r.key === 'mist');
+  const rxCleanse = s.reactions.find((r) => r.key === 'cleanse');
+  const rxSteam = s.reactions.find((r) => r.key === 'steam');
+  const rxWild = s.reactions.find((r) => r.key === 'wildfire');
+  const rxCond = s.reactions.find((r) => r.key === 'conduct');
+
+  assert.equal(rxOver.exactDmg, 900);
+  assert.equal(rxOver.estDmg, 750 + 750 + 400);
+  assert.equal(rxOver.count, 3);
+  assert.equal(rxPf.exactDmg, 600);
+  assert.equal(rxSc.estDmg, 450 * 3);
+  assert.equal(rxMist.estDmg, 1100);
+  // cleanse: 2300 / 2.3 = 1000 base -> 1300 est reaction mult bonus
+  assert.ok(Math.abs(rxCleanse.estDmg - 1300) < 1e-6);
+  // steam: (2760 - 1000) * (ln(2.3) / (ln(1.2) + ln(2.3))) + 680 AoE
+  const wFire = Math.log(1.2), wRx = Math.log(2.3);
+  const expectedSteamMult = (2760 - 1000) * (wRx / (wFire + wRx));
+  assert.ok(Math.abs(rxSteam.estDmg - (expectedSteamMult + 680)) < 1e-6);
+  assert.equal(rxWild.count, 1);
+  assert.equal(rxWild.dmg, 0);
+  assert.equal(rxCond.count, 1);
+  assert.equal(rxCond.dmg, 0);
+
+  // Triggering basic hit (500) + beyond-cap m5 (210) must be on __basic__
+  const basic = s.skills.find((sk) => sk.id === '__basic__');
+  assert.equal(basic.totalDmg, 500 + 210);
+
+  // Explicit reaction skill row category
+  const rxSkill = s.skills.find((sk) => sk.id === 'reaction_overload');
+  assert.equal(rxSkill.sourceCat, 'reaction');
+
+  // Strict 7-source global & per-skill sum invariants
+  const g = s.sources;
+  const sum7 = g.skill + g.runeProc + g.runeMod + g.card + g.gear + g.dot + g.reaction;
+  assert.ok(Math.abs(sum7 - s.kpis.totalDmgDealt) < 1e-6, 'global 7 sources must sum exactly to totalDmgDealt');
+  for (const sk of s.skills) {
+    const ss = sk.sources;
+    const skSum = ss.skill + ss.runeProc + ss.runeMod + ss.card + ss.gear + ss.dot + ss.reaction;
+    assert.ok(Math.abs(skSum - sk.totalDmg) < 1e-6, `skill ${sk.id} 7 sources must sum to totalDmg`);
+  }
+
+  // Exports & RunSnapshot
+  const csv = eng.exportCSV(clock.get());
+  assert.ok(csv.includes('"DoT"'));
+  assert.ok(csv.includes('"Reaction"'));
+  const json = JSON.parse(eng.exportJSON(clock.get()));
+  assert.ok(json.dots.length >= 1 && json.reactions.length >= 6 && json.sources.reaction > 0);
+  const snap = eng.createRunSnapshot('Rx Run', clock.get());
+  assert.ok(snap.dots.length >= 1 && snap.reactions.length >= 6);
+
+  // Bounded pending reactions & direct hits caches
+  for (let i = 0; i < 450; i++) {
+    clock.advance(10);
+    eng.recordEvent({ type: 'combat', sourceId: 'hero-1', targetId: `tx_${i}`, skillId: 'gale', damage: 100 });
+    eng.recordEvent({ type: 'reaction', actorId: 'hero-1', targetId: `tx_${i}`, key: 'overload' });
+  }
+  assert.ok(eng._pendingReactions.length <= 16);
+  assert.ok(eng._lastDirectHitByTarget.size <= 400);
+});

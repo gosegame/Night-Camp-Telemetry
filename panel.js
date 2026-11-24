@@ -55,11 +55,19 @@ const SOURCE_PARTS = [
   { key: 'card', label: 'การ์ด', color: '#c084fc' },
   { key: 'gear', label: 'อาวุธ/เกียร์', color: '#f472b6' },
   { key: 'dot', label: 'DoT', color: '#4ade80' },
+  { key: 'reaction', label: 'ปฏิกิริยา', color: '#ff6b4a' },
 ];
 
 function sourceModeTag(part, srcObj) {
   if (!srcObj) return '';
   if (part.key === 'runeMod') return '~est';
+  if (part.key === 'reaction') {
+    const ex = (srcObj.reactionExact || 0) > 0.5;
+    const md = (srcObj.reactionMod || 0) > 0.5;
+    if (ex && md) return 'จริง+est';
+    if (md) return '~est';
+    return 'จริง';
+  }
   if (part.key === 'card') {
     const ex = (srcObj.cardExact || 0) > 0.5;
     const md = (srcObj.cardMod || 0) > 0.5;
@@ -75,7 +83,11 @@ function sourceModeTag(part, srcObj) {
     return 'จริง';
   }
   if (part.key === 'skill') {
-    const hasEst = (srcObj.runeMod || 0) > 0.5 || (srcObj.cardMod || 0) > 0.5 || (srcObj.gearMod || 0) > 0.5;
+    const hasEst =
+      (srcObj.runeMod || 0) > 0.5 ||
+      (srcObj.cardMod || 0) > 0.5 ||
+      (srcObj.gearMod || 0) > 0.5 ||
+      (srcObj.reactionMod || 0) > 0.5;
     return hasEst ? '~หักตัวคูณ' : 'จริง';
   }
   return 'จริง';
@@ -502,7 +514,7 @@ function renderOverview() {
 
   drawSparkline(s.sparkline);
 
-  // Composition bar: 6 Damage Sources (Skill / Rune Proc / Rune Mod / Card / Gear / DoT)
+  // Composition bar: 7 Damage Sources (Skill / Rune Proc / Rune Mod / Card / Gear / DoT / Reaction)
   const tot = Math.max(1, k.totalDmgDealt);
   const srcAll = s.sources || {
     skill: k.directDmg,
@@ -511,6 +523,7 @@ function renderOverview() {
     card: 0,
     gear: 0,
     dot: k.dotDmg,
+    reaction: k.reactionDmg || 0,
   };
   $('compTotal').textContent = `${fmtNum(k.totalDmgDealt)} DMG`;
   $('compBar').innerHTML = buildStackedSegments(srcAll, tot);
@@ -523,6 +536,71 @@ function renderOverview() {
       return `<span><i style="color:${p.color};font-style:normal">■</i> ${esc(p.label)} <span class="muted" style="font-size:9px">[${esc(tag)}]</span> <b>${pct.toFixed(1)}%</b> (${fmtNum(v)})</span>`;
     })
     .join('');
+
+  // Status DoT & Elemental Reactions summary card on Overview
+  const dotsList = s.dots || [];
+  const rxList = s.reactions || [];
+  const statusCard = $('overviewStatusCard');
+  if (statusCard) {
+    const hasStatusOrRx = dotsList.length > 0 || rxList.length > 0;
+    statusCard.classList.toggle('hidden', !hasStatusOrRx);
+    if (hasStatusOrRx) {
+      const dotPct = k.totalDmgDealt > 0 ? ((srcAll.dot || 0) / tot) * 100 : 0;
+      const rxPct = k.totalDmgDealt > 0 ? ((srcAll.reaction || 0) / tot) * 100 : 0;
+      $('overviewStatusBadge').textContent = `DoT ${dotPct.toFixed(1)}% · ปฏิกิริยา ${rxPct.toFixed(1)}%`;
+
+      const items = [
+        ...dotsList.map((d) => ({
+          kind: 'dot',
+          name: d.name,
+          color: d.color || elColor(d.element),
+          dmg: d.dmg || 0,
+          sharePct: d.sharePct || 0,
+          dps: d.dps || 0,
+          sub: `${d.ticks} ticks`,
+          tagHtml: d.sourceBucket === 'runeProc'
+            ? '<span class="muted" style="font-size:9px">[รูน Proc]</span>'
+            : d.inferred
+              ? '<span class="est-tag">~est</span>'
+              : '<span class="exact-tag">จริง</span>',
+        })),
+        ...rxList.map((r) => ({
+          kind: 'rx',
+          name: r.name,
+          color: r.color || '#ff6b4a',
+          dmg: r.dmg || 0,
+          sharePct: r.sharePct || 0,
+          dps: r.dps || 0,
+          sub: `×${r.count}`,
+          tagHtml: r.exactDmg > 0 && r.estDmg > 0
+            ? '<span class="est-tag">จริง+est</span>'
+            : r.exactDmg > 0
+              ? '<span class="exact-tag">จริง</span>'
+              : r.estDmg > 0
+                ? '<span class="est-tag">~est</span>'
+                : `<span class="muted" style="font-size:9px">[${r.mode === 'spread' ? 'กระจายเผา' : 'CC'}]</span>`,
+        })),
+      ]
+        .sort((a, b) => b.dmg - a.dmg)
+        .slice(0, 8);
+
+      $('overviewStatusBars').innerHTML = items
+        .map((it) => {
+          const w = it.dmg > 0 ? Math.max(2, Math.min(100, it.sharePct)).toFixed(1) : '0.0';
+          const rightTxt = it.dmg > 0
+            ? `${fmtNum(it.dmg)} (${it.sharePct.toFixed(1)}%) · ${fmtNum(it.dps)}/s`
+            : `${it.sub} (ไม่มีดาเมจตรง)`;
+          return `<div class="bar-row">
+            <div class="bar-row-top">
+              <span><i class="el-dot" style="display:inline-block;background:${esc(it.color)};margin-right:5px"></i>${esc(it.name)} <span class="muted">(${esc(it.sub)})</span> ${it.tagHtml}</span>
+              <span class="mono">${esc(rightTxt)}</span>
+            </div>
+            <div class="bar-track"><div class="bar-fill" style="width:${w}%;background:${esc(it.color)}"></div></div>
+          </div>`;
+        })
+        .join('');
+    }
+  }
 
   // Top 5 Skills
   const top = s.skills.filter((sk) => sk.totalDmg > 0).slice(0, 5);
@@ -639,7 +717,11 @@ function renderSkills() {
             ? '<span class="cat-tag card">🃏 การ์ด</span>'
             : sk.sourceCat === 'gear'
               ? '<span class="cat-tag gear">⚔ อาวุธ</span>'
-              : '';
+              : sk.sourceCat === 'reaction'
+                ? '<span class="cat-tag reaction">⚡ ปฏิกิริยา</span>'
+                : sk.sourceCat === 'dot'
+                  ? '<span class="cat-tag dot">DoT</span>'
+                  : '';
           const srcObj = sk.sources || { skill: sk.directDmg, runeProc: sk.procChildDmg, dot: sk.dotDmg };
           const runeBadges = sk.equippedRunes
             .map((r) => {
@@ -741,7 +823,7 @@ function renderSkills() {
                 </div>
               </div>
               <div class="skill-row2">
-                <span>${fmtNum(sk.dps)}/s · ${sk.hits}h · Crit <b class="gold">${sk.critRate.toFixed(0)}%</b> · Avg ${fmtNum(sk.avgHit)} (Max ${fmtNum(sk.maxHit)})</span>
+                <span>${fmtNum(sk.dps)}/s · ${sk.hits === 0 && sk.dotTicks > 0 ? `${sk.dotTicks} ticks` : `${sk.hits}h`} · Crit <b class="gold">${sk.critRate.toFixed(0)}%</b> · Avg ${fmtNum(sk.avgHit)} (Max ${fmtNum(sk.maxHit)})</span>
                 <div class="rune-badges">${runeBadges}</div>
               </div>
             </div>
@@ -798,8 +880,93 @@ function renderElements() {
 
   $('reactionsRow').innerHTML = s.reactions.length
     ? '<span class="muted" style="font-size:10px">Reactions:</span> ' +
-      s.reactions.map((r) => `<span class="badge good">${esc(r.name)} ×${r.count}</span>`).join('')
+      s.reactions
+        .map((r) => `<span class="badge good">${esc(r.name)} ×${r.count}${r.dmg > 0 ? ' · ' + fmtNum(r.dmg) : ''}</span>`)
+        .join('')
     : '';
+
+  const dotsList = s.dots || [];
+  const rxList = s.reactions || [];
+  const statusReactBox = $('statusReactContainer');
+  if (statusReactBox) {
+    const dotSum = s.sources?.dot ?? s.kpis?.dotDmg ?? 0;
+    const rxSum = s.sources?.reaction ?? s.kpis?.reactionDmg ?? 0;
+    const totDmg = Math.max(1, s.kpis?.totalDmgDealt || 0);
+    const dotPct = (s.kpis?.totalDmgDealt || 0) > 0 ? (dotSum / totDmg) * 100 : 0;
+    const rxPct = (s.kpis?.totalDmgDealt || 0) > 0 ? (rxSum / totDmg) * 100 : 0;
+    $('statusReactBadge').textContent = (dotsList.length || rxList.length)
+      ? `DoT ${fmtNum(dotSum)} (${dotPct.toFixed(1)}%) · ปฏิกิริยา ${fmtNum(rxSum)} (${rxPct.toFixed(1)}%)`
+      : 'ยังไม่มี DoT / ปฏิกิริยา';
+
+    const rxHtml = rxList.length
+      ? `<div>
+          <div class="sub-hd">ปฏิกิริยาธาตุ (Elemental Reactions)</div>
+          <table class="tbl">
+            <thead><tr><th>ปฏิกิริยา</th><th class="num">ครั้ง</th><th class="num">DMG</th><th class="num">% รวม</th><th class="num">DPS</th><th class="num">Avg/ครั้ง</th></tr></thead>
+            <tbody>
+              ${rxList
+                .map((r) => {
+                  let dmgCell = '—';
+                  if (r.dmg > 0) {
+                    const tag = r.exactDmg > 0 && r.estDmg > 0
+                      ? '<span class="est-tag">จริง+est</span>'
+                      : r.exactDmg > 0
+                        ? '<span class="exact-tag">จริง</span>'
+                        : '<span class="est-tag">~est</span>';
+                    dmgCell = `${fmtNum(r.dmg)}${tag}`;
+                  } else if (r.mode === 'spread' || r.mode === 'cc') {
+                    dmgCell = `<span class="muted">${r.mode === 'spread' ? 'กระจายเผา' : 'CC'}</span>`;
+                  }
+                  const comboSub = r.combo ? ` <span class="muted" style="font-size:9.5px">(${esc(r.combo)})</span>` : '';
+                  return `<tr>
+                    <td><i class="el-dot" style="display:inline-block;background:${esc(r.color || '#ff6b4a')};margin-right:4px"></i><b>${esc(r.name)}</b>${comboSub}</td>
+                    <td class="num">${r.count}</td>
+                    <td class="num cyan">${dmgCell}</td>
+                    <td class="num">${r.dmg > 0 ? r.sharePct.toFixed(1) + '%' : '—'}</td>
+                    <td class="num">${r.dmg > 0 ? fmtNum(r.dps) : '—'}</td>
+                    <td class="num">${r.dmg > 0 ? fmtNum(r.avgDmg) : '—'}</td>
+                  </tr>`;
+                })
+                .join('')}
+            </tbody>
+          </table>
+        </div>`
+      : '';
+
+    const hasRuneDot = dotsList.some((d) => d.sourceBucket === 'runeProc');
+    const dotHtml = dotsList.length
+      ? `<div style="${rxList.length ? 'margin-top:8px' : ''}">
+          <div class="sub-hd">สถานะ / DoT (เผา · พิษ · เลือดไหล · รูนพิษ)</div>
+          <table class="tbl">
+            <thead><tr><th>สถานะ</th><th class="num">Ticks</th><th class="num">DMG</th><th class="num">% รวม</th><th class="num">DPS</th><th class="num">Avg / Max</th></tr></thead>
+            <tbody>
+              ${dotsList
+                .map((d) => {
+                  const tag = d.sourceBucket === 'runeProc'
+                    ? '<span class="cat-tag" style="color:#f59e0b;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.35);margin-left:3px">รูน Proc</span>'
+                    : d.inferred
+                      ? '<span class="est-tag">~est</span>'
+                      : '<span class="exact-tag">จริง</span>';
+                  return `<tr>
+                    <td><i class="el-dot" style="display:inline-block;background:${esc(d.color || elColor(d.element))};margin-right:4px"></i><b>${esc(d.name)}</b>${tag}</td>
+                    <td class="num">${d.ticks}</td>
+                    <td class="num green">${fmtNum(d.dmg)}</td>
+                    <td class="num">${d.sharePct.toFixed(1)}%</td>
+                    <td class="num">${fmtNum(d.dps)}</td>
+                    <td class="num">${fmtNum(d.avgTick)} / ${fmtNum(d.maxTick)}</td>
+                  </tr>`;
+                })
+                .join('')}
+            </tbody>
+          </table>
+          ${hasRuneDot ? '<div class="muted" style="font-size:10px;margin-top:4px">* รูนพิษสะสม (Venom) นับรวมอยู่ในส่วน <b>รูน Proc</b> ของแถบองค์ประกอบดาเมจแล้ว (ไม่นับซ้ำ)</div>' : ''}
+        </div>`
+      : '';
+
+    statusReactBox.innerHTML = (rxHtml || dotHtml)
+      ? (rxHtml + dotHtml)
+      : '<div class="muted">ยังไม่มีดาเมจจาก DoT หรือปฏิกิริยาธาตุในรอบนี้</div>';
+  }
 
   $('armoursContainer').innerHTML = s.armours.length
     ? `<table class="tbl">

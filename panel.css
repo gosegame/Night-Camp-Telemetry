@@ -496,6 +496,8 @@ html, body {
 }
 .cat-tag.card { color: #c084fc; background: rgba(192, 132, 252, 0.12); border: 1px solid rgba(192, 132, 252, 0.35); }
 .cat-tag.gear { color: #f472b6; background: rgba(244, 114, 182, 0.12); border: 1px solid rgba(244, 114, 182, 0.35); }
+.cat-tag.reaction { color: #ff6b4a; background: rgba(255, 107, 74, 0.14); border: 1px solid rgba(255, 107, 74, 0.38); }
+.cat-tag.dot { color: #4ade80; background: rgba(74, 222, 128, 0.12); border: 1px solid rgba(74, 222, 128, 0.35); }
 .skill-card {
   background: var(--panel);
   border: 1px solid var(--border);

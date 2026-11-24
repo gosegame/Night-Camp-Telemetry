@@ -288,6 +288,14 @@
         dead: !!rawEv.dead,
       };
       if (rawEv.element || rawEv.el) ev.element = rawEv.element || rawEv.el;
+      if (rawEv.reaction) ev.reaction = rawEv.reaction;
+      if (rawEv.dotKind) ev.dotKind = rawEv.dotKind;
+      if (ev.dot && !ev.skillId && ev.targetId) {
+        const m = nc().OnlineWorld?.mirrors?.get?.(ev.targetId);
+        if (m) {
+          ev.targetSt = { burn: !!(m.st?.burn?.n > 0), poison: !!m.poison };
+        }
+      }
       if (Array.isArray(rawEv.runes) && rawEv.runes.length) ev.runes = rawEv.runes.slice(0, 6);
     } else if (type === 'reward') {
       ev = {
@@ -315,8 +323,11 @@
         t: nowMs,
         actorId: rawEv.actorId || null,
         sourceId: rawEv.sourceId || null,
+        targetId: rawEv.targetId || null,
         key: rawEv.key || null,
       };
+      if (rawEv.damage != null) ev.damage = Number(rawEv.damage) || 0;
+      if (rawEv.skillId) ev.skillId = rawEv.skillId;
     } else if (type === 's2rune' || type === 's2trap' || type === 'shot') {
       ev = {
         type,
@@ -467,6 +478,7 @@
             s.derived?.detail?.gear || (typeof NC.GEAROPT?.rowMods === 'function' && player ? NC.GEAROPT.rowMods(player) : null)
           ),
           totalMods: extractDamageModMap(s.derived?.detail?.mods || player?.d?.mods || null),
+          reactPct: Number((s.derived?.detail?.mods || player?.d?.mods)?.react) || 0,
           runePouchIds: Array.isArray(s.runePouch)
             ? s.runePouch.filter(Boolean).map((r) => ({ id: r.id, kind: r.kind, tier: r.tier || 1 }))
             : null,
@@ -482,16 +494,29 @@
             : null,
         },
         monsters: Array.isArray(snap.monsters)
-          ? snap.monsters.filter(Boolean).map((m) => ({
-              id: m.id,
-              type: m.type || '',
-              lv: m.lv || 0,
-              dead: m.dead || 0,
-              boss: !!(m.boss || NC.BOSSES?.[m.type]),
-              rootBoss: !!m.rootBoss,
-              storyBoss: !!(m.storyBoss || /^sb_/.test(m.type || '')),
-              dummy: !!m.dummy,
-            }))
+          ? snap.monsters.filter(Boolean).map((m) => {
+              const rec = {
+                id: m.id,
+                type: m.type || '',
+                lv: m.lv || 0,
+                dead: m.dead || 0,
+                boss: !!(m.boss || NC.BOSSES?.[m.type]),
+                rootBoss: !!m.rootBoss,
+                storyBoss: !!(m.storyBoss || /^sb_/.test(m.type || '')),
+                dummy: !!m.dummy,
+              };
+              if (m.poisoned) rec.poisoned = true;
+              if (m.frozen) rec.frozen = true;
+              if (m.st && typeof m.st === 'object') {
+                let stOut = null;
+                for (const [sk, sv] of Object.entries(m.st)) {
+                  const n = Number(sv);
+                  if (n > 0) (stOut ||= {})[sk] = n;
+                }
+                if (stOut) rec.st = stOut;
+              }
+              return rec;
+            })
           : [],
         players: Array.isArray(snap.players)
           ? snap.players.filter(Boolean).map((pl) => ({

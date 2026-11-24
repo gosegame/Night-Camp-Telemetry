@@ -120,6 +120,14 @@
           <div id="compLegend" class="comp-legend"></div>
         </div>
 
+        <div id="overviewStatusCard" class="card hidden">
+          <div class="card-hd">
+            <span>สถานะ DoT &amp; ปฏิกิริยาธาตุ</span>
+            <span id="overviewStatusBadge" class="muted">—</span>
+          </div>
+          <div id="overviewStatusBars" class="mini-bars"></div>
+        </div>
+
         <div class="card">
           <div class="card-hd">
             <span>Top Skills &amp; Proc Runes</span>
@@ -167,6 +175,14 @@
           </div>
           <div id="elementsContainer" class="mini-bars"></div>
           <div id="reactionsRow" class="reactions-row"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd">
+            <span>ดาเมจจากสถานะ (DoT) &amp; ปฏิกิริยาธาตุ</span>
+            <span id="statusReactBadge" class="muted">Real vs ~Est</span>
+          </div>
+          <div id="statusReactContainer"></div>
         </div>
 
         <div class="card">
@@ -262,6 +278,7 @@
             <span>Live Combat Log</span>
             <div class="seg-group" id="logFilterSeg">
               <button class="seg active" data-log="all">All</button>
+              <button class="seg" data-log="reaction">React</button>
               <button class="seg" data-log="rune">Runes</button>
               <button class="seg" data-log="taken">Taken</button>
               <button class="seg" data-log="drop">Drops</button>
